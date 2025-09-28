@@ -1,12 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/IdrisovMarat/agregator/internal/command"
 	"github.com/IdrisovMarat/agregator/internal/config"
+	"github.com/IdrisovMarat/agregator/internal/database"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -16,12 +20,26 @@ func main() {
 		log.Fatalf("Failed to read config: %v", err)
 	}
 
+	dbURL := cfg.DBURL
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	}
+
+	dbQueries := database.New(db)
+
 	// Create application state
-	state := &command.State{Config: cfg}
+	state := &command.State{
+		Db:     dbQueries,
+		Config: cfg,
+	}
 
 	// Initialize commands registry
 	commands := &command.Commands{}
 	commands.Register("login", command.HandlerLogin)
+	commands.Register("register", command.HandlerRegister)
+	commands.Register("reset", command.HandlerReset)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {
