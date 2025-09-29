@@ -8,6 +8,7 @@ import (
 
 	"github.com/IdrisovMarat/agregator/internal/config"
 	"github.com/IdrisovMarat/agregator/internal/database"
+	"github.com/IdrisovMarat/agregator/internal/xml"
 	"github.com/google/uuid"
 )
 
@@ -131,5 +132,28 @@ func HandlerGetUsers(s *State, cmd Command) error {
 		fmt.Printf("* %v %v\n", user, current)
 	}
 
+	return nil
+}
+
+// handlerAgg handles the aggregator service
+func HandlerAgg(s *State, cmd Command) error {
+	const url = "https://www.wagslane.dev/index.xml"
+	ctx := context.Background()
+
+	rssFeed, err := xml.FetchFeed(ctx, url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to reset the table 'users': %v", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(rssFeed.Channel.Title)
+	fmt.Println(rssFeed.Channel.Description)
+	fmt.Println("******************************************")
+	for i := range rssFeed.Channel.Item {
+		fmt.Println(rssFeed.Channel.Item[i].Title)
+		fmt.Println("---------------------------------------------------------------------------------------------------------")
+		fmt.Println(rssFeed.Channel.Item[i].Description)
+		fmt.Println("**********************************************************************************************************")
+	}
 	return nil
 }
