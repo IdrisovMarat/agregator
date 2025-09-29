@@ -69,7 +69,7 @@ func HandlerLogin(s *State, cmd Command) error {
 	return nil
 }
 
-// handlerLogin handles the register command
+// handlerRegister handles the register command
 func HandlerRegister(s *State, cmd Command) error {
 	if len(cmd.Args) == 0 {
 		return fmt.Errorf("register command requires a username")
@@ -98,7 +98,7 @@ func HandlerRegister(s *State, cmd Command) error {
 	return nil
 }
 
-// handlerLogin handles the register command
+// handlerReset handles the register command
 func HandlerReset(s *State, cmd Command) error {
 
 	ctx := context.Background()
@@ -110,5 +110,26 @@ func HandlerReset(s *State, cmd Command) error {
 	}
 
 	fmt.Println("The user table was successfully deleted")
+	return nil
+}
+
+// handlerReset handles the register command
+func HandlerGetUsers(s *State, cmd Command) error {
+
+	ctx := context.Background()
+
+	users, err := s.Db.GetUsers(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get users from the table 'users': %v", err)
+		os.Exit(1)
+	}
+	var current string = ""
+	for _, user := range users {
+		if s.Config.CurrentUserName == user {
+			current = "(current)"
+		}
+		fmt.Printf("* %v %v\n", user, current)
+	}
+
 	return nil
 }
