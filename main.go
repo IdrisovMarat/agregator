@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/IdrisovMarat/agregator/internal/command"
 	"github.com/IdrisovMarat/agregator/internal/config"
@@ -24,7 +26,15 @@ func main() {
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error opening database: %v\n", err)
+	}
+
+	// Проверяем подключение
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "error connecting to database: %v\n", err)
 	}
 
 	dbQueries := database.New(db)
@@ -42,6 +52,7 @@ func main() {
 	commands.Register("reset", command.HandlerReset)
 	commands.Register("users", command.HandlerGetUsers)
 	commands.Register("agg", command.HandlerAgg)
+	commands.Register("addfeed", command.HandlerAddfeed)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {

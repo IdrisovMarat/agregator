@@ -157,3 +157,43 @@ func HandlerAgg(s *State, cmd Command) error {
 	}
 	return nil
 }
+
+// handlerAddfeed handles the addfeed command for reaching feeds
+func HandlerAddfeed(s *State, cmd Command) error {
+
+	if len(cmd.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "addfeed command requires the url and name")
+		os.Exit(1)
+	}
+
+	currentUser := s.Config.CurrentUserName
+
+	ctx2 := context.Background()
+
+	user, err := s.Db.GetUser(ctx2, currentUser)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
+		os.Exit(1)
+	}
+
+	feedName := cmd.Args[0]
+
+	feedUrl := cmd.Args[1]
+
+	feedParam := database.CreateFeedParams{
+		Name:   feedName,
+		Url:    feedUrl,
+		UserID: user.ID,
+	}
+
+	ctx1 := context.Background()
+
+	feed, err := s.Db.CreateFeed(ctx1, feedParam)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create feed through createfeed: %v", err)
+	}
+
+	fmt.Printf("%v\n", feed)
+
+	return nil
+}
