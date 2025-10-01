@@ -197,3 +197,22 @@ func HandlerAddfeed(s *State, cmd Command) error {
 
 	return nil
 }
+
+// handlerFeeds handles the feeds command
+func HandlerFeeds(s *State, cmd Command) error {
+
+	ctx := context.Background()
+
+	feeds, err := s.Db.GetFeedsWithName(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get feeds from the table 'feeds': %v", err)
+		os.Exit(1)
+	}
+
+	for _, feed := range feeds {
+		fmt.Printf("%v\n%v\n%v\n%v\n", feed.Name_2, feed.Name.String, feed.Url.String, feed.CreatedAt.Time.Format("2006-01-02 15:04:05"))
+		fmt.Print("\n****************************************************************\n")
+	}
+
+	return nil
+}

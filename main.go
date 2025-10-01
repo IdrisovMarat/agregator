@@ -53,6 +53,7 @@ func main() {
 	commands.Register("users", command.HandlerGetUsers)
 	commands.Register("agg", command.HandlerAgg)
 	commands.Register("addfeed", command.HandlerAddfeed)
+	commands.Register("feeds", command.HandlerFeeds)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {

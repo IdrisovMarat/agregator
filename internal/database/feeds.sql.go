@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/google/uuid"
 )
@@ -94,6 +95,50 @@ func (q *Queries) GetFeedsByUser(ctx context.Context, userID uuid.UUID) ([]Feed,
 			&i.Name,
 			&i.Url,
 			&i.UserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getFeedsWithName = `-- name: GetFeedsWithName :many
+SELECT feeds.name, feeds.url, feeds.created_at, users.name
+FROM feeds
+RIGHT JOIN users
+ON feeds.user_id = users.id
+WHERE feeds.user_id = users.id
+ORDER BY feeds.created_at DESC
+`
+
+type GetFeedsWithNameRow struct {
+	Name      sql.NullString
+	Url       sql.NullString
+	CreatedAt sql.NullTime
+	Name_2    string
+}
+
+func (q *Queries) GetFeedsWithName(ctx context.Context) ([]GetFeedsWithNameRow, error) {
+	rows, err := q.db.QueryContext(ctx, getFeedsWithName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetFeedsWithNameRow
+	for rows.Next() {
+		var i GetFeedsWithNameRow
+		if err := rows.Scan(
+			&i.Name,
+			&i.Url,
+			&i.CreatedAt,
+			&i.Name_2,
 		); err != nil {
 			return nil, err
 		}

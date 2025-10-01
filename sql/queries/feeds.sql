@@ -12,3 +12,14 @@ ORDER BY created_at DESC;
 SELECT * FROM feeds
 WHERE user_id = $1
 ORDER BY created_at DESC;
+
+
+-- name: GetFeedsWithName :many
+SELECT feeds.name, feeds.url, feeds.created_at, users.name
+FROM feeds
+RIGHT JOIN users
+ON feeds.user_id = users.id
+WHERE feeds.user_id = users.id
+ORDER BY feeds.created_at DESC;
+  
+  
