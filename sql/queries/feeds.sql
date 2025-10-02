@@ -13,6 +13,9 @@ SELECT * FROM feeds
 WHERE user_id = $1
 ORDER BY created_at DESC;
 
+-- name: GetFeedIdByUrl :one
+SELECT id FROM feeds
+WHERE url = $1;
 
 -- name: GetFeedsWithName :many
 SELECT feeds.name, feeds.url, feeds.created_at, users.name

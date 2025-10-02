@@ -158,7 +158,7 @@ func HandlerAgg(s *State, cmd Command) error {
 	return nil
 }
 
-// handlerAddfeed handles the addfeed command for reaching feeds
+// handlerAddfeed handles the addfeed command for adding feeds
 func HandlerAddfeed(s *State, cmd Command) error {
 
 	if len(cmd.Args) != 2 {
@@ -176,13 +176,9 @@ func HandlerAddfeed(s *State, cmd Command) error {
 		os.Exit(1)
 	}
 
-	feedName := cmd.Args[0]
-
-	feedUrl := cmd.Args[1]
-
 	feedParam := database.CreateFeedParams{
-		Name:   feedName,
-		Url:    feedUrl,
+		Name:   cmd.Args[0],
+		Url:    cmd.Args[1],
 		UserID: user.ID,
 	}
 
@@ -193,7 +189,22 @@ func HandlerAddfeed(s *State, cmd Command) error {
 		fmt.Fprintf(os.Stderr, "failed to create feed through createfeed: %v", err)
 	}
 
-	fmt.Printf("%v\n", feed)
+	folowParam := database.CreateFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}
+
+	ctx3 := context.Background()
+
+	followItems, err := s.Db.CreateFeedFollow(ctx3, folowParam)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find : %v", err)
+		os.Exit(1)
+	}
+
+	fmt.Print("\n****************************************************************\n")
+	fmt.Printf("%v\n%v\n%v\n%v\n", followItems.UserName, followItems.FeedName, feed.Url, followItems.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Print("\n****************************************************************\n")
 
 	return nil
 }
@@ -211,6 +222,78 @@ func HandlerFeeds(s *State, cmd Command) error {
 
 	for _, feed := range feeds {
 		fmt.Printf("%v\n%v\n%v\n%v\n", feed.Name_2, feed.Name.String, feed.Url.String, feed.CreatedAt.Time.Format("2006-01-02 15:04:05"))
+		fmt.Print("\n****************************************************************\n")
+	}
+
+	return nil
+}
+
+// handlerFollow handles the follow command
+func HandlerFollow(s *State, cmd Command) error {
+	if len(cmd.Args) == 0 {
+		return fmt.Errorf("follow command requires an url")
+	}
+
+	usersName := s.Config.CurrentUserName
+
+	ctx1 := context.Background()
+
+	user, err := s.Db.GetUser(ctx1, usersName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
+		os.Exit(1)
+	}
+
+	ctx2 := context.Background()
+
+	feedId, err := s.Db.GetFeedIdByUrl(ctx2, cmd.Args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to : %v", err)
+		os.Exit(1)
+	}
+
+	param := database.CreateFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feedId,
+	}
+
+	ctx3 := context.Background()
+
+	followItems, err := s.Db.CreateFeedFollow(ctx3, param)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find : %v", err)
+		os.Exit(1)
+	}
+	fmt.Print("\n****************************************************************\n")
+	fmt.Printf("%v\n%v\n%v\n", followItems.UserName, followItems.FeedName, followItems.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Print("\n****************************************************************\n")
+	return nil
+}
+
+// handlerFollowing handles the following command
+func HandlerFollowing(s *State, cmd Command) error {
+
+	usersName := s.Config.CurrentUserName
+
+	ctx1 := context.Background()
+
+	user, err := s.Db.GetUser(ctx1, usersName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
+		os.Exit(1)
+	}
+
+	ctx2 := context.Background()
+
+	feeds, err := s.Db.GetFeedFollowsForUser(ctx2, user.ID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to : %v", err)
+		os.Exit(1)
+	}
+
+	for _, feed := range feeds {
+		fmt.Print("\n****************************************************************\n")
+		fmt.Printf("\n\n%v\n%v\n%v\n\n", feed.UserName, feed.FeedName, feed.CreatedAt.Format("2006-01-02 15:04:05"))
 		fmt.Print("\n****************************************************************\n")
 	}
 

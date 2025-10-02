@@ -54,6 +54,8 @@ func main() {
 	commands.Register("agg", command.HandlerAgg)
 	commands.Register("addfeed", command.HandlerAddfeed)
 	commands.Register("feeds", command.HandlerFeeds)
+	commands.Register("follow", command.HandlerFollow)
+	commands.Register("following", command.HandlerFollowing)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {
