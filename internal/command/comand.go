@@ -29,6 +29,22 @@ type Commands struct {
 	handlers map[string]func(*State, Command) error
 }
 
+func middlewareLoggedIn(handler func(s *State, cmd Command, user database.User) error) func(*State, Command) error {
+
+	return func(s *State, cmd Command) error {
+		usersName := s.Config.CurrentUserName
+
+		ctx1 := context.Background()
+
+		user, err := s.Db.GetUser(ctx1, usersName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
+			os.Exit(1)
+		}
+		return handler(s, cmd, user)
+	}
+}
+
 // run executes a command with the given state
 func (c *Commands) Run(s *State, cmd Command) error {
 	handler, exists := c.handlers[cmd.Name]
@@ -38,12 +54,22 @@ func (c *Commands) Run(s *State, cmd Command) error {
 	return handler(s, cmd)
 }
 
-// register adds a new command handler
+// registerLoggedIn регистрирует обычную команду
 func (c *Commands) Register(name string, handler func(*State, Command) error) {
 	if c.handlers == nil {
 		c.handlers = make(map[string]func(*State, Command) error)
 	}
 	c.handlers[name] = handler
+}
+
+// registerLoggedIn регистрирует команду, требующую авторизации
+func (c *Commands) RegisterLoggedIn(name string, handler func(*State, Command, database.User) error) {
+
+	if c.handlers == nil {
+		c.handlers = make(map[string]func(*State, Command) error)
+	}
+
+	c.handlers[name] = middlewareLoggedIn(handler)
 }
 
 // handlerLogin handles the login command
@@ -159,20 +185,10 @@ func HandlerAgg(s *State, cmd Command) error {
 }
 
 // handlerAddfeed handles the addfeed command for adding feeds
-func HandlerAddfeed(s *State, cmd Command) error {
+func HandlerAddfeed(s *State, cmd Command, user database.User) error {
 
 	if len(cmd.Args) != 2 {
 		fmt.Fprintln(os.Stderr, "addfeed command requires the url and name")
-		os.Exit(1)
-	}
-
-	currentUser := s.Config.CurrentUserName
-
-	ctx2 := context.Background()
-
-	user, err := s.Db.GetUser(ctx2, currentUser)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
 		os.Exit(1)
 	}
 
@@ -229,19 +245,9 @@ func HandlerFeeds(s *State, cmd Command) error {
 }
 
 // handlerFollow handles the follow command
-func HandlerFollow(s *State, cmd Command) error {
+func HandlerFollow(s *State, cmd Command, user database.User) error {
 	if len(cmd.Args) == 0 {
 		return fmt.Errorf("follow command requires an url")
-	}
-
-	usersName := s.Config.CurrentUserName
-
-	ctx1 := context.Background()
-
-	user, err := s.Db.GetUser(ctx1, usersName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
-		os.Exit(1)
 	}
 
 	ctx2 := context.Background()
@@ -271,17 +277,7 @@ func HandlerFollow(s *State, cmd Command) error {
 }
 
 // handlerFollowing handles the following command
-func HandlerFollowing(s *State, cmd Command) error {
-
-	usersName := s.Config.CurrentUserName
-
-	ctx1 := context.Background()
-
-	user, err := s.Db.GetUser(ctx1, usersName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to find user in s.Db.GetUser() function - the user does not exists: %v", err)
-		os.Exit(1)
-	}
+func HandlerFollowing(s *State, cmd Command, user database.User) error {
 
 	ctx2 := context.Background()
 

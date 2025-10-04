@@ -52,10 +52,11 @@ func main() {
 	commands.Register("reset", command.HandlerReset)
 	commands.Register("users", command.HandlerGetUsers)
 	commands.Register("agg", command.HandlerAgg)
-	commands.Register("addfeed", command.HandlerAddfeed)
 	commands.Register("feeds", command.HandlerFeeds)
-	commands.Register("follow", command.HandlerFollow)
-	commands.Register("following", command.HandlerFollowing)
+
+	commands.RegisterLoggedIn("addfeed", command.HandlerAddfeed)
+	commands.RegisterLoggedIn("follow", command.HandlerFollow)
+	commands.RegisterLoggedIn("following", command.HandlerFollowing)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {
