@@ -295,3 +295,35 @@ func HandlerFollowing(s *State, cmd Command, user database.User) error {
 
 	return nil
 }
+
+// handlerFollow handles the follow command
+func HandlerUnFollow(s *State, cmd Command, user database.User) error {
+	if len(cmd.Args) == 0 {
+		return fmt.Errorf("unfollow command requires an url")
+	}
+
+	ctx2 := context.Background()
+
+	feedId, err := s.Db.GetFeedIdByUrl(ctx2, cmd.Args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to : %v", err)
+		os.Exit(1)
+	}
+
+	param := database.DeleteFeedFollowByUserAndFeedParams{
+		UserID: user.ID,
+		FeedID: feedId,
+	}
+
+	ctx3 := context.Background()
+
+	err = s.Db.DeleteFeedFollowByUserAndFeed(ctx3, param)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find : %v", err)
+		os.Exit(1)
+	}
+	fmt.Print("\n****************************************************************\n")
+	fmt.Println("DELETED")
+	fmt.Print("\n****************************************************************\n")
+	return nil
+}

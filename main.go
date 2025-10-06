@@ -56,6 +56,7 @@ func main() {
 
 	commands.RegisterLoggedIn("addfeed", command.HandlerAddfeed)
 	commands.RegisterLoggedIn("follow", command.HandlerFollow)
+	commands.RegisterLoggedIn("unfollow", command.HandlerUnFollow)
 	commands.RegisterLoggedIn("following", command.HandlerFollowing)
 
 	// Parse command line arguments
