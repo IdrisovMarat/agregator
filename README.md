@@ -1,12 +1,12 @@
 Отлично! Создам comprehensive README.md для вашего RSS агрегатора. Вот полная документация:
 
-# Agregator - RSS агрегатор новостных каналов
+# gator - RSS агрегатор новостных каналов
 
 ![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
 ![RSS](https://img.shields.io/badge/RSS-FFA500?style=for-the-badge&logo=rss&logoColor=white)
 
-**Agregator** - это мощный CLI-инструмент для агрегации и управления RSS-фидами. Собирайте новости из любимых источников, организуйте подписки и читайте контент прямо в терминале.
+**gator** - это мощный CLI-инструмент для агрегации и управления RSS-фидами. Собирайте новости из любимых источников, организуйте подписки и читайте контент прямо в терминале.
 
 ## 🚀 Быстрый старт
 
@@ -126,7 +126,7 @@ agregator browse 5
 
 ## 🗄️ Структура базы данных
 
-Agregator использует следующую схему базы данных:
+gator использует следующую схему базы данных:
 
 - **users** - пользователи системы
 - **feeds** - RSS фиды с уникальными URL
