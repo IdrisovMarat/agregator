@@ -58,6 +58,7 @@ func main() {
 	commands.RegisterLoggedIn("follow", command.HandlerFollow)
 	commands.RegisterLoggedIn("unfollow", command.HandlerUnFollow)
 	commands.RegisterLoggedIn("following", command.HandlerFollowing)
+	commands.RegisterLoggedIn("browse", command.HandlerBrowse)
 
 	// Parse command line arguments
 	if len(os.Args) < 2 {

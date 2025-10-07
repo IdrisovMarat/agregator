@@ -2,14 +2,21 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/IdrisovMarat/agregator/internal/config"
 	"github.com/IdrisovMarat/agregator/internal/database"
 	"github.com/IdrisovMarat/agregator/internal/xml"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // State holds the application state
@@ -163,25 +170,63 @@ func HandlerGetUsers(s *State, cmd Command) error {
 
 // handlerAgg handles the aggregator service
 func HandlerAgg(s *State, cmd Command) error {
-	const url = "https://www.wagslane.dev/index.xml"
-	ctx := context.Background()
+	// const url = "https://www.wagslane.dev/index.xml"
 
-	rssFeed, err := xml.FetchFeed(ctx, url)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to reset the table 'users': %v", err)
+	if len(cmd.Args) != 1 {
+		fmt.Fprintln(os.Stderr, "agg command requires the time_between_reqs")
 		os.Exit(1)
 	}
 
-	fmt.Println(rssFeed.Channel.Title)
-	fmt.Println(rssFeed.Channel.Description)
-	fmt.Println("******************************************")
-	for i := range rssFeed.Channel.Item {
-		fmt.Println(rssFeed.Channel.Item[i].Title)
-		fmt.Println("---------------------------------------------------------------------------------------------------------")
-		fmt.Println(rssFeed.Channel.Item[i].Description)
-		fmt.Println("**********************************************************************************************************")
+	timeBetweenReqs := cmd.Args[0]
+
+	// Парсим duration
+	duration, err := time.ParseDuration(timeBetweenReqs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing duration '%s': %v", timeBetweenReqs, err)
 	}
-	return nil
+
+	// Проверяем, что duration не слишком маленький (анти-DOS защита)
+	if duration < time.Second*10 {
+		fmt.Fprintf(os.Stderr, "Duration too short: %v. Minimum is 10 seconds to avoid overloading servers.", duration)
+	}
+
+	fmt.Printf("🚀 Starting RSS aggregator\n")
+	fmt.Printf("⏰ Collecting feeds every %v\n", duration)
+	fmt.Printf("⏹️  Press Ctrl+C to stop\n\n")
+
+	// Обработка сигналов для graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	// Запускаем ticker
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	// Выполняем немедленно первую агрегацию
+	fmt.Println("🔄 Starting initial fetch...")
+	if err := ScrapeFeeds(ctx, s); err != nil {
+		log.Printf("Error in initial fetch: %v", err)
+	}
+
+	// Основной цикл
+	for {
+		select {
+		case <-ticker.C:
+			if err := ScrapeFeeds(ctx, s); err != nil {
+				fmt.Printf("Error scraping feeds: %v", err)
+			}
+
+		case <-sigCh:
+			fmt.Println("\n🛑 Shutting down aggregator...")
+			return nil
+		}
+
+	}
+
+	// return nil
 }
 
 // handlerAddfeed handles the addfeed command for adding feeds
@@ -325,5 +370,204 @@ func HandlerUnFollow(s *State, cmd Command, user database.User) error {
 	fmt.Print("\n****************************************************************\n")
 	fmt.Println("DELETED")
 	fmt.Print("\n****************************************************************\n")
+	return nil
+}
+
+func ScrapeFeeds(ctx context.Context, s *State) error {
+
+	feed, err := s.Db.GetNextFeedToFetch(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting next feed to fetch: %w", err)
+	}
+
+	err = s.Db.MarkFeedFetched(ctx, feed.ID)
+	if err != nil {
+		return fmt.Errorf("error marking feed as fetched: %w", err)
+	}
+
+	log.Printf("📡 Fetching feed: %s (%s)", feed.Name, feed.Url)
+
+	// Получаем RSS фид
+	rssFeed, err := xml.FetchFeed(ctx, feed.Url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error fetching feed %s: %v", feed.Url, err)
+		os.Exit(1)
+	}
+
+	// Сохраняем посты в базу данных вместо вывода в консоль
+	postsSaved := 0
+	for _, item := range rssFeed.Channel.Item {
+		err := savePost(ctx, s, feed.ID, item)
+		if err != nil {
+			log.Printf("⚠️ Error saving post '%s': %v", item.Title, err)
+			continue
+		}
+		postsSaved++
+	}
+
+	log.Printf("✅ Saved %d new posts from %s", postsSaved, feed.Name)
+	return nil
+}
+
+func savePost(ctx context.Context, s *State, feedID uuid.UUID, item xml.RSSItem) error {
+	// Парсим дату публикации
+	publishedAt, err := parsePubDate(item.PubDate)
+	if err != nil {
+		log.Printf("⚠️ Could not parse date '%s': %v", item.PubDate, err)
+		// Используем текущее время если дата невалидна
+		publishedAt = time.Now()
+	}
+
+	// Очищаем и обрезаем слишком длинные поля
+	title := cleanText(item.Title, 500)
+	description := cleanText(item.Description, 2000)
+	url := cleanText(item.Link, 500)
+
+	savePostParam := database.CreatePostParams{
+		Title:       title,
+		Url:         url,
+		Description: sql.NullString{String: description, Valid: true},
+		PublishedAt: sql.NullTime{Time: publishedAt, Valid: true},
+		FeedID:      feedID,
+	}
+
+	// Пытаемся создать пост
+	_, err = s.Db.CreatePost(ctx, savePostParam)
+
+	// Игнорируем ошибку дубликата URL
+	if err != nil {
+		if isDuplicateError(err) {
+			return nil // Просто игнорируем дубликаты
+		}
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	return nil
+}
+
+// parsePubDate парсит различные форматы дат из RSS
+func parsePubDate(dateStr string) (time.Time, error) {
+	// Убираем лишние пробелы
+	dateStr = strings.TrimSpace(dateStr)
+
+	// Попробуем несколько распространенных форматов RSS
+	formats := []string{
+		time.RFC1123,  // "Mon, 02 Jan 2006 15:04:05 MST"
+		time.RFC1123Z, // "Mon, 02 Jan 2006 15:04:05 -0700"
+		time.RFC822,   // "02 Jan 06 15:04 MST"
+		time.RFC822Z,  // "02 Jan 06 15:04 -0700"
+		time.RFC3339,  // "2006-01-02T15:04:05Z07:00"
+		"Mon, 2 Jan 2006 15:04:05 -0700",
+		"Mon, 2 Jan 2006 15:04:05 MST",
+		"02 Jan 2006 15:04:05 MST",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
+}
+
+// cleanText очищает текст и обрезает до максимальной длины
+func cleanText(text string, maxLen int) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if len(text) > maxLen {
+		return text[:maxLen]
+	}
+	return text
+}
+
+// isDuplicateError проверяет, является ли ошибка ошибкой дубликата
+func isDuplicateError(err error) bool {
+	if pqErr, ok := err.(*pq.Error); ok {
+		return pqErr.Code == "23505" // unique_violation
+	}
+	return strings.Contains(err.Error(), "duplicate") ||
+		strings.Contains(err.Error(), "23505")
+}
+
+// formatDate форматирует дату для красивого вывода
+func formatDate(t time.Time) string {
+	now := time.Now()
+
+	// Если сегодня
+	if t.Year() == now.Year() && t.Month() == now.Month() && t.Day() == now.Day() {
+		return "Today at " + t.Format("15:04")
+	}
+
+	// Если вчера
+	yesterday := now.AddDate(0, 0, -1)
+	if t.Year() == yesterday.Year() && t.Month() == yesterday.Month() && t.Day() == yesterday.Day() {
+		return "Yesterday at " + t.Format("15:04")
+	}
+
+	// Если в этом году
+	if t.Year() == now.Year() {
+		return t.Format("Jan 2 at 15:04")
+	}
+
+	// Если в другом году
+	return t.Format("Jan 2, 2006")
+}
+
+// truncateText обрезает текст и добавляет многоточие
+func truncateText(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen] + "..."
+}
+
+// HandlerBrowse получает посты для пользователя и красиво выводит
+func HandlerBrowse(s *State, cmd Command, user database.User) error {
+
+	// Парсим лимит (по умолчанию 2)
+	limit := 2
+	if len(cmd.Args) > 0 {
+		parsedLimit, err := strconv.Atoi(cmd.Args[0])
+		if err != nil || parsedLimit <= 0 {
+			log.Fatalf("Invalid limit: %s. Please provide a positive number.", cmd.Args[0])
+		}
+		limit = parsedLimit
+	}
+	ctx := context.Background()
+	// Получаем посты для пользователя
+	posts, err := s.Db.GetPostsForUser(ctx, database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		log.Fatalf("Error getting posts: %v", err)
+	}
+
+	if len(posts) == 0 {
+		fmt.Println("📭 No posts found.")
+		fmt.Println("   Make sure you're following some feeds and that the aggregator is running!")
+		return nil
+	}
+
+	fmt.Printf("📰 Latest %d posts from your feeds:\n\n", len(posts))
+
+	for i, post := range posts {
+		fmt.Printf("┌─── Post %d ──────────────────────────────────────────\n", i+1)
+		fmt.Printf("│ 📝 %s\n", post.Title)
+		fmt.Printf("│ 📅 Published: %s\n", formatDate(post.PublishedAt.Time))
+		fmt.Printf("│ 📋 Feed: %s\n", post.FeedName)
+		fmt.Printf("│ 🔗 %s\n", post.Url)
+
+		if post.Description.String != "" {
+			// Обрезаем и форматируем описание
+			desc := truncateText(post.Description.String, 200)
+			fmt.Printf("│ 📄 %s\n", desc)
+		}
+
+		fmt.Printf("└─────────────────────────────────────────────────────\n\n")
+	}
 	return nil
 }
